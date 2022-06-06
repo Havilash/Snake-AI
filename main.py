@@ -287,12 +287,12 @@ def eval_genomes(genomes, config):
 
             if snake.apple_frame_count > APPLE_TIME:
                 # print("apple death")
-                ge[i].fitness -= 7
+                ge[i].fitness -= 2
                 snake.die()
             
         for i, snake in enumerate(snakes):
             if snake.is_dying:
-                ge[i].fitness -= 2
+                ge[i].fitness -= 5
                 snakes.pop(i)
                 ge.pop(i)
                 nets.pop(i)
@@ -311,19 +311,19 @@ def run(config_path):
 
     for root, dirs, files in os.walk('checkpoints'):
         checkpoint_nums = list(map(lambda x: int(re.search('[0-9]*$', x).group(0)), files))
-        best_checkpoint = max(checkpoint_nums)
-            
-    p = neat.Checkpointer.restore_checkpoint('checkpoints/neat-checkpoint-' + str(best_checkpoint))
+    
+    if checkpoint_nums:  # if checkpoint files get most recent checkpoint
+        best_checkpoint = max(checkpoint_nums)    
+        p = neat.Checkpointer.restore_checkpoint('checkpoints/neat-checkpoint-' + str(best_checkpoint))
+    else:
+        p = neat.Population(config)
 
     p.add_reporter(neat.StdOutReporter(True))
     stats = neat.StatisticsReporter()
     p.add_reporter(stats)
     p.add_reporter(neat.Checkpointer(50, filename_prefix='checkpoints/neat-checkpoint-'))
 
-    # pe = neat.ThreadedEvaluator(1 + multiprocessing.cpu_count(), eval_genomes)
-    # winner = p.run(pe.evaluate, 10)
-
-    winner = p.run(eval_genomes, 300)
+    winner = p.run(eval_genomes, 1000)
 
     print("[SAVING] saving best genome ...")
     pickle.dump(winner, open('save_winner.pickle', 'wb'))
@@ -336,6 +336,9 @@ def run(config_path):
 
 
 def replay_genome(config_path, genome_path):
+    global FPS
+    FPS = 20
+
     config = neat.config.Config(neat.DefaultGenome, neat.DefaultReproduction,
                          neat.DefaultSpeciesSet, neat.DefaultStagnation,
                          config_path)
@@ -349,4 +352,4 @@ if __name__ == '__main__':
     config_path = os.path.join(local_dir, 'config-feedforward.txt')
 
     run(config_path)
-    # replay_genome(config_path, "save_genome.pickle")
+    # replay_genome(config_path, "save_winner.pickle")
