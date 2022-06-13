@@ -2,17 +2,18 @@ import math
 import os
 import sys
 import pygame
-import neat
+import neat  #neat-python
 import random
 import pickle
 import re
-import concurrent.futures
+
+
+FPS = 1000  # SPEED
 
 WIDTH = 500
 HEIGHT = 500
 ROWS = 20
 WIN = pygame.display.set_mode((WIDTH, HEIGHT))
-FPS = 1000
 gen = 0
 
 
@@ -359,7 +360,7 @@ def run(config_path):
     print('\nBest genome:\n{!s}'.format(winner))
 
 
-    FPS = 20
+    FPS = 15
     replay_genome(config_path, "save_winner.pickle")
 
 
