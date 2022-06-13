@@ -1,3 +1,4 @@
+import math
 import os
 import sys
 import pygame
@@ -5,6 +6,7 @@ import neat
 import random
 import pickle
 import re
+import concurrent.futures
 
 WIDTH = 500
 HEIGHT = 500
@@ -51,8 +53,6 @@ class Snake():
     # body = []
 
     def __init__(self, color, pos):
-        self.apple_frame_count = 0
-
         self.color = color
         self.body = []
         self.head = Body(pos)  # set head to front
@@ -66,6 +66,9 @@ class Snake():
 
 
         self.apple = Apple(randomSnack(ROWS, self))
+        self.dist_food = 0
+        self.old_dist_food = math.sqrt((self.apple.pos[1] - self.head.pos[1])**2 + (self.apple.pos[1] - self.head.pos[1])**2)
+
 
 
     def move(self):
@@ -119,11 +122,10 @@ class Snake():
         self.body[-1].dirnx = dx
         self.body[-1].dirny = dy
 
-    def spawn_apple(self):
+    def spawn_apple(self):  # as class-instance function to create apples for every snake
         if self.body[0].pos == self.apple.pos:  # when apple is eaten
             self.addCube()
             self.apple = Apple(randomSnack(ROWS, self))
-            self.apple_frame_count = 0
             return True
 
     def draw(self, surface, eyes=False):
@@ -139,28 +141,40 @@ class Snake():
         self.is_dying = True
 
     def get_data(self):
-        # Distance to the Walls
-        # dist_wall_right = self.rows - self.head.pos[0]
-        # dist_wall_bottom = self.rows - self.head.pos[1]
-        # dist_wall_left = self.head.pos[0]
-        # dist_wall_top = self.head.pos[1]
+        # distance to edges
+        # dist_edge_right = self.rows - self.head.pos[0]
+        # dist_edge_bottom = self.rows - self.head.pos[1]
+        # dist_edge_left = self.head.pos[0]
+        # dist_edge_top = self.head.pos[1]
 
+        # distance to tail
         # x_dist_tail = self.body[-1].pos[0] - self.head.pos[0]
         # y_dist_tail = self.body[-1].pos[1] - self.head.pos[1]
 
-        x_dist_food = self.apple.pos[0] - self.head.pos[0]
-        y_dist_food = self.apple.pos[1] - self.head.pos[1]
+        # distance to food
+        # x_dist_food = self.apple.pos[0] - self.head.pos[0]
+        # y_dist_food = self.apple.pos[1] - self.head.pos[1]
 
-        is_obstacle = [[],[],[],[]]
-        for i, pos_val in enumerate([(0, 1), (0, -1), (1, 0), (-1, 0)]):
+        # direction to food
+        food_direction = [0, 0, 0, 0]  # straight, back, left, right
+        if self.head.pos[1] > self.apple.pos[1]:  # straight
+            food_direction[0] = 1
+        if self.head.pos[1] < self.apple.pos[1]:  # back
+            food_direction[1] = 1
+        if self.head.pos[0] > self.apple.pos[0]:  # left
+            food_direction[2] = 1
+        if self.head.pos[0] < self.apple.pos[0]:  # right
+            food_direction[3] = 1
+
+        # check if is obstacle at given position
+        is_obstacle = [0,0,0,0]  # 0 = no obstacle, 1 = obstacle
+        for i, pos_val in enumerate([(0, 1), (0, -1), (1, 0), (-1, 0)]):  # down, up, right, left 
             pos = (self.head.pos[0] + pos_val[0], self.head.pos[1] + pos_val[1])
-            if pos in list(map(lambda z: z.pos, self.body[1:])) or (pos[0] < 0 and pos[0] >= ROWS and pos[1] >= ROWS and pos[1] < 0):  # check if body overlap
+            if pos in list(map(lambda z: z.pos, self.body[1:])) or (pos[0] < 0 or pos[0] >= ROWS or pos[1] >= ROWS or pos[1] < 0):
                 is_obstacle[i] = 1
-                continue
-            is_obstacle[i] = 0
 
-        return (x_dist_food, y_dist_food, *is_obstacle)
-        # return (x_dist_food, y_dist_food)
+        # return (x_dist_food, y_dist_food, *is_obstacle)
+        return (*food_direction, *is_obstacle)
 
 
 class Body(Cube):
@@ -217,14 +231,14 @@ def randomSnack(rows, item):
 
 def eval_genomes(genomes, config):
     global gen, FPS
-    APPLE_TIME = 100  # livetime without eating apples
 
     nets = []
     ge = []
     snakes = []
 
+    # Create genomes, nets, snakes
     for genome_id, genome in genomes:
-        genome.fitness = 0  # start with fitness level of 0
+        genome.fitness = 0 
         net = neat.nn.FeedForwardNetwork.create(genome, config)
         nets.append(net)
         snakes.append(Snake((255, 0, 0), (10, 10)))
@@ -235,37 +249,41 @@ def eval_genomes(genomes, config):
     is_running = True
 
     clock = pygame.time.Clock()
-    
     while is_running and len(snakes) > 0:
         clock.tick(FPS)  # Set frames per second to 10
-        for event in pygame.event.get():  # Quits Pygame
-            if event.type == pygame.QUIT:
+
+        for event in pygame.event.get():  
+            if event.type == pygame.QUIT:  # Quits Pygame
                 is_running = False
                 pygame.quit()
                 sys.exit()
 
         # Evalulate Data
         for x, snake in enumerate(snakes):
-            snake.apple_frame_count += 1
-            ge[x].fitness += 0.1
+            snake.dist_food = math.sqrt((snake.apple.pos[1] - snake.head.pos[1])**2 + (snake.apple.pos[1] - snake.head.pos[1])**2)
+            if snake.dist_food < snake.old_dist_food:
+                ge[x].fitness += 0.1
+            elif snake.dist_food >= snake.old_dist_food:
+                ge[x].fitness -= 0.14
+            snake.old_dist_food = snake.dist_food
 
             data = snake.get_data()
 
             output = nets[x].activate(data)  # Neural Network Output
 
-            if output[0] > 0.5:
+            if output[0] > 0.5:  # left
                 snake.dirnx = -1
                 snake.dirny = 0
                 
-            elif output[1] > 0.5:
+            if output[1] > 0.5:  # right
                 snake.dirnx = 1
                 snake.dirny = 0
 
-            elif output[2] > 0.5:
+            if output[2] > 0.5:  # up
                 snake.dirnx = 0
                 snake.dirny = -1
 
-            elif output[3] > 0.5:
+            if output[3] > 0.5:  # down
                 snake.dirnx = 0
                 snake.dirny = 1
                 
@@ -274,61 +292,72 @@ def eval_genomes(genomes, config):
             if snake.spawn_apple():
                 ge[i].fitness += 5
             
-
+        # check snake death
         for i, snake in enumerate(snakes):
             if snake.head.pos in list(map(lambda z: z.pos, snake.body[1:])):  # check if body overlap
                 # print("overlap death")
+                ge[i].fitness -= 1
                 snake.die()
                 break
 
-            if snake.dirnx == -1 and snake.head.pos[0] < 0 or snake.dirnx == 1 and snake.head.pos[0] >= ROWS or snake.dirny == 1 and snake.head.pos[1] >= ROWS or snake.dirny == -1 and snake.head.pos[1] < 0:
+            if snake.dirnx == -1 and snake.head.pos[0] < 0 or snake.dirnx == 1 and snake.head.pos[0] >= ROWS or snake.dirny == 1 and snake.head.pos[1] >= ROWS or snake.dirny == -1 and snake.head.pos[1] < 0:  # check if body crashes with edge
                 # print("edge death")
                 snake.die()
 
-            if snake.apple_frame_count > APPLE_TIME:
+            if ge[i].fitness < -10:  # check if snake doesn't eat apples
                 # print("apple death")
                 ge[i].fitness -= 2
                 snake.die()
             
+        # delete dead snakes
         for i, snake in enumerate(snakes):
             if snake.is_dying:
-                ge[i].fitness -= 5
+                ge[i].fitness -= 4.5
                 snakes.pop(i)
                 ge.pop(i)
                 nets.pop(i)
 
-        # print(list(map(lambda x: x.fitness, ge)), list(map(lambda x: x.apple_frame_count, snakes)))
+        # print(list(map(lambda x: x.fitness, ge)))
 
         redrawWindow(WIN, snakes)  # Refresh screen
 
 def run(config_path):
     global FPS
-
+    # FPS = 20
     config = neat.config.Config(neat.DefaultGenome, neat.DefaultReproduction,
                          neat.DefaultSpeciesSet, neat.DefaultStagnation,
                          config_path)
 
-
-    for root, dirs, files in os.walk('checkpoints'):
-        checkpoint_nums = list(map(lambda x: int(re.search('[0-9]*$', x).group(0)), files))
     
-    if checkpoint_nums:  # if checkpoint files get most recent checkpoint
-        best_checkpoint = max(checkpoint_nums)    
-        p = neat.Checkpointer.restore_checkpoint('checkpoints/neat-checkpoint-' + str(best_checkpoint))
+    # get most recent checkpoint
+    checkpoints_path = 'checkpoints'
+    for root, dirs, files in os.walk(checkpoints_path):
+        if root == 'checkpoints':
+            checkpoint_nums = list(map(lambda x: int(re.search('[0-9]*$', x).group(0)), files))
+    # restore checkpoint
+    if checkpoint_nums:
+        best_checkpoint = 'neat-checkpoint-' + str(max(checkpoint_nums))
+        p = neat.Checkpointer.restore_checkpoint(os.path.join(checkpoints_path, best_checkpoint))
     else:
         p = neat.Population(config)
 
+    # p = neat.Checkpointer.restore_checkpoint(os.path.join(checkpoints_path,'neat-checkpoint-' + str(599)))
+
+    # stats
     p.add_reporter(neat.StdOutReporter(True))
     stats = neat.StatisticsReporter()
     p.add_reporter(stats)
-    p.add_reporter(neat.Checkpointer(50, filename_prefix='checkpoints/neat-checkpoint-'))
+    p.add_reporter(neat.Checkpointer(100, filename_prefix=os.path.join(checkpoints_path,'neat-checkpoint-')))
 
+    # evaluate genomes
     winner = p.run(eval_genomes, 1000)
 
+    # save winner genome
     print("[SAVING] saving best genome ...")
     pickle.dump(winner, open('save_winner.pickle', 'wb'))
 
     print('\nBest genome:\n{!s}'.format(winner))
+
 
     FPS = 20
     replay_genome(config_path, "save_winner.pickle")
