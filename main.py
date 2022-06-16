@@ -7,8 +7,10 @@ import random
 import pickle
 import re
 
-
-FPS = 1000  # SPEED
+try:
+    FPS = int(sys.argv[1])
+except:
+    FPS = 1000  # SPEED
 
 WIDTH = 500
 HEIGHT = 500
@@ -265,7 +267,7 @@ def eval_genomes(genomes, config):
             if snake.dist_food < snake.old_dist_food:
                 ge[x].fitness += 0.1
             elif snake.dist_food >= snake.old_dist_food:
-                ge[x].fitness -= 0.14
+                ge[x].fitness -= 0.13
             snake.old_dist_food = snake.dist_food
 
             data = snake.get_data()
@@ -383,3 +385,5 @@ if __name__ == '__main__':
 
     run(config_path)
     # replay_genome(config_path, "save_winner.pickle")
+
+
